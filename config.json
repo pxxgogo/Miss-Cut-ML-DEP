@@ -1,0 +1,14 @@
+{
+  "batch_size": 64,
+  "max_grad_norm": 5,
+  "output_size": 1024,
+  "keep_prob": 0.7,
+  "hidden_size": 768,
+  "num_layers": 2,
+  "data_dir": "../../data/training_corpus/",
+  "vocab_name": "corpus.vocab",
+  "learning_rate": 0.001,
+  "max_epoch": 6,
+  "max_max_epoch": 55,
+  "init_scale": 0.04
+}
