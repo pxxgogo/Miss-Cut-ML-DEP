@@ -108,7 +108,7 @@ class PTBModel(object):
         labels_outputs = tf.concat([outputs[:, 0], outputs[:, 2]], axis=1)
 
         words_outputs = tf.reshape(words_outputs, [-1, self.hidden_size])
-        labels_outputs = tf.reshape(labels_outputs, [-1. self.hidden_size])
+        labels_outputs = tf.reshape(labels_outputs, [-1, self.hidden_size])
 
         word_softmax_w = tf.get_variable(
             "word_softmax_w", [self.hidden_size, self.word_vocab_size], dtype=data_type())
@@ -165,19 +165,18 @@ class PTBModel(object):
 
 
 # @make_spin(Spin1, "Running epoch...")
-def run_epoch(session, model, provider, data, eval_op, verbose=False):
+def run_epoch(session, model, provider, status, eval_op, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
     stage_time = time.time()
     costs = 0.0
     iters = 0
     words = 0
-    provider.status = data
-    for step, (x, y, length) in enumerate(provider()):
+    provider.status = status
+    for step, (x, length) in enumerate(provider()):
         fetches = [model.cost, eval_op]
         feed_dict = {}
         feed_dict[model.input_data] = x
-        feed_dict[model.targets] = y
         feed_dict[model.sequence_length] = length
         max_length = length[len(length) - 1]
         cost, _ = session.run(fetches, feed_dict)
@@ -229,7 +228,7 @@ def main():
         with tf.variable_scope("model", reuse=None, initializer=initializer):
             m = PTBModel(is_training=True, config=config)
         with tf.variable_scope("model", reuse=True, initializer=initializer):
-            mvalid = PTBModel(is_training=False, config=config)
+            mdev = PTBModel(is_training=False, config=config)
             mtest = PTBModel(is_training=False, config=eval_config)
 
         session.run(tf.global_variables_initializer())
@@ -250,8 +249,8 @@ def main():
             save_path = saver.save(session, './model/misscut_rnn_model', global_step=i)
             print("Model saved in file: %s" % save_path)
             print("Starting Time:", datetime.now())
-            valid_perplexity = run_epoch(session, mvalid, provider, 'valid', tf.no_op())
-            print("Epoch: %d Valid Perplexity: %.3f" % (i + 1, valid_perplexity))
+            dev_perplexity = run_epoch(session, mdev, provider, 'dev', tf.no_op())
+            print("Epoch: %d Valid Perplexity: %.3f" % (i + 1, dev_perplexity))
             print("Ending Time:", datetime.now())
             if (i % 13 == 0 and not i == 0):
                 print("Starting Time:", datetime.now())

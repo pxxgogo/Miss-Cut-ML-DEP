@@ -10,5 +10,9 @@
   "learning_rate": 0.001,
   "max_epoch": 6,
   "max_max_epoch": 55,
-  "init_scale": 0.04
+  "init_scale": 0.04,
+  "sequence_length": 5,
+  "dev_corpus_suffix": "dev.dat.npy",
+  "test_corpus_suffix": "test.dat.npy"
+
 }
