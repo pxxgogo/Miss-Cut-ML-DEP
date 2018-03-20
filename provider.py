@@ -114,6 +114,7 @@ class ptb_data_provider(object):
             training_corpus_path = self.training_corpus_paths[training_corpus_index]
             training_data = np.load(training_corpus_path)
             self.current_epoch_size = self.get_epoch_size(training_data)
+            np.random.shuffle(training_data)
             print("TRAINING_FILE_PATH: %s, EPOCH_SIZE: %d" % (training_corpus_path, self.current_epoch_size))
             for i in range(self.current_epoch_size):
                 data = training_data[i * self.batch_size: (i + 1) * self.batch_size]

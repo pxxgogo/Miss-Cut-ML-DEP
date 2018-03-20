@@ -18,27 +18,9 @@ flags.DEFINE_bool("use_fp16", False,
                   "Train using 16-bit floats instead of 32bit floats")
 
 FLAGS = flags.FLAGS
-provider = None
-config = None
-batch_size = 1024
-word_vocab_size = 216100
-label_vocab_size = 50
-initial_state = None
-final_state = None
 
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-DEVICE_FLAG = "/gpu:0"
-
-X = None
-y = None
-
-cell = None
-
-cost = None
-train_op = None
-new_lr = None
-lr_update = None
 
 
 def data_type():
@@ -57,19 +39,19 @@ class PTBModel(object):
         self._input_data = tf.placeholder(tf.int32, [self.batch_size, config["sequence_length"]])
         self._sequence_length = tf.placeholder(tf.int16, [self.batch_size])
 
-        with tf.device(DEVICE_FLAG):
-            rnn_cell_list = []
-            for i in range(config['num_layers']):
+        rnn_cell_list = []
+        for nn_info in config["nns_info"]:
+            with tf.device(nn_info["device"]):
                 rnn_cell = tf.contrib.rnn.BasicLSTMCell(self.hidden_size, forget_bias=0.0, state_is_tuple=True)
                 # rnn_cell = tf.contrib.rnn.GRUCell(size)
 
                 if is_training and config['keep_prob'] < 1:
                     rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell, output_keep_prob=config['keep_prob'])
-                rnn_cell_list.append(rnn_cell)
+            rnn_cell_list.append(rnn_cell)
 
-            cell = tf.contrib.rnn.MultiRNNCell(rnn_cell_list, state_is_tuple=True)
+        cell = tf.contrib.rnn.MultiRNNCell(rnn_cell_list, state_is_tuple=True)
 
-        with tf.device(DEVICE_FLAG):
+        with tf.device(config["embedding_device"]):
             word_embedding = tf.get_variable("word_embedding", [self.word_vocab_size, self.hidden_size],
                                              dtype=data_type())
             label_embedding = tf.get_variable("label_embedding", [self.label_vocab_size, self.hidden_size],
