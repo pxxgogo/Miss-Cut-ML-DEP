@@ -21,7 +21,6 @@ FLAGS = flags.FLAGS
 provider = None
 config = None
 batch_size = 1024
-size = 200
 word_vocab_size = 216100
 label_vocab_size = 50
 initial_state = None
@@ -55,13 +54,13 @@ class PTBModel(object):
         self.word_vocab_size = config['word_vocab_size']
         self.label_vocab_size = config['label_vocab_size']
 
-        self._input_data = tf.placeholder(tf.int32, [self.batch_size, None])
+        self._input_data = tf.placeholder(tf.int32, [self.batch_size, config["sequence_length"]])
         self._sequence_length = tf.placeholder(tf.int16, [self.batch_size])
 
         with tf.device(DEVICE_FLAG):
             rnn_cell_list = []
             for i in range(config['num_layers']):
-                rnn_cell = tf.contrib.rnn.BasicLSTMCell(size, forget_bias=0.0, state_is_tuple=True)
+                rnn_cell = tf.contrib.rnn.BasicLSTMCell(self.hidden_size, forget_bias=0.0, state_is_tuple=True)
                 # rnn_cell = tf.contrib.rnn.GRUCell(size)
 
                 if is_training and config['keep_prob'] < 1:
@@ -92,10 +91,11 @@ class PTBModel(object):
         #           for input_ in tf.split(1, num_steps, inputs)]
         # outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
         inputs = tf.concat(
-            [word_inputs[:, 0], label_inputs[:, 0], word_inputs[:, 1], label_inputs[:, 1]], axis=1)
-        words_targets = tf.concat(
-            [self._input_data[:, 1], self._input_data[:, 2]], axis=1)
-        labels_targets = tf.concat([self._input_data[:, 3], self._input_data[:, 4]], axis=1)
+            [word_inputs[:, 0:1], label_inputs[:, 0:1], word_inputs[:, 1:2], label_inputs[:, 1:2]], axis=1)
+        words_targets = self._input_data[:, 1:3]
+        # words_targets = tf.concat(
+        #     [self._input_data[:, 1], self._input_data[:, 2]], axis=1)
+        labels_targets = tf.concat([self._input_data[:, 3:4], self._input_data[:, 4:5]], axis=1)
         with tf.variable_scope("RNN"):
             outputs, last_states = tf.nn.dynamic_rnn(
                 cell=cell,
@@ -104,8 +104,9 @@ class PTBModel(object):
                 inputs=inputs)
         # print(outputs)
 
-        words_outputs = tf.concat([outputs[:, 1], outputs[:, 3]], axis=1)
-        labels_outputs = tf.concat([outputs[:, 0], outputs[:, 2]], axis=1)
+        words_outputs = tf.concat([outputs[:, 1:2], outputs[:, 3:4]], axis=1)
+        labels_outputs = tf.concat([outputs[:, 0:1], outputs[:, 2:3]], axis=1)
+        # print(words_outputs.shape, labels_outputs.shape)
 
         words_outputs = tf.reshape(words_outputs, [-1, self.hidden_size])
         labels_outputs = tf.reshape(labels_outputs, [-1, self.hidden_size])
@@ -118,10 +119,12 @@ class PTBModel(object):
             "label_softmax_w", [self.hidden_size, self.label_vocab_size], dtype=data_type())
         label_softmax_b = tf.get_variable("label_softmax_b", [self.label_vocab_size], dtype=data_type())
 
-        words_y_flat = tf.reshape(words_outputs, [-1])
-        labels_y_flat = tf.reshape(labels_outputs, [-1])
+        words_y_flat = tf.reshape(words_targets, [-1])
+        labels_y_flat = tf.reshape(labels_targets, [-1])
         words_logits = tf.matmul(words_outputs, word_softmax_w) + word_softmax_b
         labels_logits = tf.matmul(labels_outputs, label_softmax_w) + label_softmax_b
+        # print(words_logits, words_targets)
+        # print(labels_logits, labels_targets)
         words_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=words_logits, labels=words_y_flat)
         labels_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=labels_logits, labels=labels_y_flat)
 
@@ -185,7 +188,7 @@ def run_epoch(session, model, provider, status, eval_op, verbose=False):
         words += max_length
         if step % 1000 == 0:
             print(cost, end='\r')
-        epoch_size = provider.get_epoch_size()
+        epoch_size = provider.get_current_epoch_size()
         divider = epoch_size // 100
         divider_10 = epoch_size // 10
         if divider == 0:

@@ -3,9 +3,9 @@
   "max_grad_norm": 5,
   "output_size": 1024,
   "keep_prob": 0.7,
-  "hidden_size": 768,
+  "hidden_size": 256,
   "num_layers": 2,
-  "data_dir": "../../data/training_corpus/",
+  "data_dir": "/home/pxxgogo/misscut/data/dependency_ML_corpus/mini",
   "vocab_name": "corpus.vocab",
   "learning_rate": 0.001,
   "max_epoch": 6,
@@ -13,6 +13,8 @@
   "init_scale": 0.04,
   "sequence_length": 5,
   "dev_corpus_suffix": "dev.dat.npy",
-  "test_corpus_suffix": "test.dat.npy"
+  "test_corpus_suffix": "test.dat.npy",
+  "word_vocab_size": 216080,
+  "label_vocab_size": 48
 
 }

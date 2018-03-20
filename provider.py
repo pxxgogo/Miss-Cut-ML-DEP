@@ -27,6 +27,7 @@ class ptb_data_provider(object):
         self.training_corpus_num = 0
         self.test_corpus_path = ""
         self.dev_corpus_path = ""
+        self.current_epoch_size = 0
         self._parse_config()
 
     def _parse_config(self):
@@ -37,7 +38,7 @@ class ptb_data_provider(object):
             self.data_dir = self.config['data_dir']
             assert op.isdir(self.data_dir) and os.access(self.data_dir, os.R_OK)
             self.filenames = os.listdir(self.data_dir)
-
+            self.batch_size = self.config["batch_size"]
             for filename in self.filenames:
                 if not filename.endswith("dat.npy"):
                     continue
@@ -97,21 +98,29 @@ class ptb_data_provider(object):
         else:
             return None
 
+    def get_config(self):
+        return self.config
+
+    def get_current_epoch_size(self):
+        return self.current_epoch_size
+
     def init_training_corpus(self):
         random.shuffle(self.training_corpus_paths)
 
     def get_training_data(self):
-        training_corpus_index = -1
+        training_corpus_index = 0
         sequence_length = np.ones(self.batch_size, dtype=np.int16) * self.config["sequence_length"]
         while training_corpus_index < self.training_corpus_num:
-            training_corpus_index += 1
             training_corpus_path = self.training_corpus_paths[training_corpus_index]
             training_data = np.load(training_corpus_path)
-            epoch_size = self.get_epoch_size(training_data)
-            print("TRAINING_FILE_PATH: %s, EPOCH_SIZE: %d" % (training_corpus_path, epoch_size))
-            for i in range(epoch_size):
+            self.current_epoch_size = self.get_epoch_size(training_data)
+            print("TRAINING_FILE_PATH: %s, EPOCH_SIZE: %d" % (training_corpus_path, self.current_epoch_size))
+            for i in range(self.current_epoch_size):
                 data = training_data[i * self.batch_size: (i + 1) * self.batch_size]
                 yield data, sequence_length
+            training_corpus_index += 1
+
+
 
 
 
@@ -119,16 +128,16 @@ class ptb_data_provider(object):
         sequence_length = np.ones(self.batch_size, dtype=np.int16) * self.config["sequence_length"]
         if self.status == "dev":
             corpus_data = np.load(self.dev_corpus_path)
-            epoch_size = self.get_epoch_size(corpus_data)
-            print("DEV_FILE_PATH: %s, EPOCH_SIZE: %d" % (self.dev_corpus_path, epoch_size))
-            for i in range(epoch_size):
+            self.current_epoch_size = self.get_epoch_size(corpus_data)
+            print("DEV_FILE_PATH: %s, EPOCH_SIZE: %d" % (self.dev_corpus_path, self.current_epoch_size))
+            for i in range(self.current_epoch_size):
                 data = corpus_data[i * self.batch_size: (i + 1) * self.batch_size]
                 yield data, sequence_length
         else:
             corpus_data = np.load(self.test_corpus_path)
-            epoch_size = self.get_epoch_size(corpus_data)
-            print("TEST_FILE_PATH: %s, EPOCH_SIZE: %d" % (self.test_corpus_path, epoch_size))
-            for i in range(epoch_size):
+            self.current_epoch_size = self.get_epoch_size(corpus_data)
+            print("TEST_FILE_PATH: %s, EPOCH_SIZE: %d" % (self.test_corpus_path, self.current_epoch_size))
+            for i in range(self.current_epoch_size):
                 data = corpus_data[i: (i + 1)]
                 yield data, sequence_length
 
