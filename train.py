@@ -24,7 +24,7 @@ FLAGS = flags.FLAGS
 
 
 def data_type():
-    return tf.float16 if FLAGS.use_fp16 else tf.float32
+    return tf.float16
 
 
 class PTBModel(object):
@@ -51,13 +51,12 @@ class PTBModel(object):
 
         cell = tf.contrib.rnn.MultiRNNCell(rnn_cell_list, state_is_tuple=True)
 
-        with tf.device(config["embedding_device"]):
-            word_embedding = tf.get_variable("word_embedding", [self.word_vocab_size, self.hidden_size],
+        word_embedding = tf.get_variable("word_embedding", [self.word_vocab_size, self.hidden_size],
                                              dtype=data_type())
-            label_embedding = tf.get_variable("label_embedding", [self.label_vocab_size, self.hidden_size],
+        label_embedding = tf.get_variable("label_embedding", [self.label_vocab_size, self.hidden_size],
                                               dtype=data_type())
-            word_inputs = tf.nn.embedding_lookup(word_embedding, self._input_data[:, :2])
-            label_inputs = tf.nn.embedding_lookup(label_embedding, self._input_data[:, 3:])
+        word_inputs = tf.nn.embedding_lookup(word_embedding, self._input_data[:, :2])
+        label_inputs = tf.nn.embedding_lookup(label_embedding, self._input_data[:, 3:])
 
         if is_training and config['keep_prob'] < 1:
             word_inputs = tf.nn.dropout(word_inputs, config['keep_prob'])
@@ -201,8 +200,8 @@ def main():
     config = provider.get_config()
     eval_config = config.copy()
     eval_config['batch_size'] = 1
-    if not os.path.exists("./model"):
-        os.mkdir("./model")
+    if not os.path.exists(model_dir):
+        os.mkdir(model_dir)
 
     # print (config)
     # print (eval_config)
@@ -231,7 +230,7 @@ def main():
             train_perplexity = run_epoch(session, m, provider, 'train', m.train_op, verbose=True)
             print("Epoch: %d Train Perplexity: %.3f" % (i + 1, train_perplexity))
             print("Ending Time:", datetime.now())
-            save_path = saver.save(session, './model/misscut_rnn_model', global_step=i)
+            save_path = saver.save(session, os.path.join(model_dir, 'misscut_rnn_model'), global_step=i)
             print("Model saved in file: %s" % save_path)
             print("Starting Time:", datetime.now())
             dev_perplexity = run_epoch(session, mdev, provider, 'dev', tf.no_op())
