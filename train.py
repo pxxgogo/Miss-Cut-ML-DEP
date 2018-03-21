@@ -19,8 +19,8 @@ flags.DEFINE_bool("use_fp16", False,
 
 FLAGS = flags.FLAGS
 
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 def data_type():
@@ -51,12 +51,14 @@ class PTBModel(object):
 
         cell = tf.contrib.rnn.MultiRNNCell(rnn_cell_list, state_is_tuple=True)
 
-        word_embedding = tf.get_variable("word_embedding", [self.word_vocab_size, self.hidden_size],
+        with tf.device(config["embedding_device"]):
+
+            word_embedding = tf.get_variable("word_embedding", [self.word_vocab_size, self.hidden_size],
                                              dtype=data_type())
-        label_embedding = tf.get_variable("label_embedding", [self.label_vocab_size, self.hidden_size],
+            label_embedding = tf.get_variable("label_embedding", [self.label_vocab_size, self.hidden_size],
                                               dtype=data_type())
-        word_inputs = tf.nn.embedding_lookup(word_embedding, self._input_data[:, :2])
-        label_inputs = tf.nn.embedding_lookup(label_embedding, self._input_data[:, 3:])
+            word_inputs = tf.nn.embedding_lookup(word_embedding, self._input_data[:, :2])
+            label_inputs = tf.nn.embedding_lookup(label_embedding, self._input_data[:, 3:])
 
         if is_training and config['keep_prob'] < 1:
             word_inputs = tf.nn.dropout(word_inputs, config['keep_prob'])
@@ -205,8 +207,7 @@ def main():
 
     # print (config)
     # print (eval_config)
-    session_config = tf.ConfigProto(log_device_placement=False)
-    session_config.gpu_options.allow_growth = False
+    session_config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     with tf.Graph().as_default(), tf.Session(config=session_config) as session:
         initializer = tf.random_uniform_initializer(-config['init_scale'], config['init_scale'])
         with tf.variable_scope("model", reuse=None, initializer=initializer):
