@@ -11,7 +11,7 @@
     "device": "/gpu:0"
   }],
   "embedding_device": "/gpu:0",
-  "data_dir": "/home/pxxgogo/misscut/data/machine_learning_corpus/03-20/broad",
+  "data_dir": "/home/pxxgogo/misscut/data/dependency_ML_corpus/mini",
   "vocab_name": "corpus.vocab",
   "learning_rate": 0.001,
   "max_epoch": 6,

@@ -24,7 +24,7 @@ FLAGS = flags.FLAGS
 
 
 def data_type():
-    return tf.float16
+    return tf.float16 if FLAGS.use_fp16 else tf.float32
 
 
 class PTBModel(object):
