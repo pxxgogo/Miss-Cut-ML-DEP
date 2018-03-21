@@ -191,17 +191,12 @@ def run_epoch(session, model, provider, status, eval_op, verbose=False):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--train_type', type=int, default=0)
-    parser.add_argument('--model_dir', type=str, default="./model")
-    args = parser.parse_args()
-    model_dir = args.model_dir
-    train_type = args.train_type
     provider = ptb_data_provider()
     provider.status = 'train'
     config = provider.get_config()
     eval_config = config.copy()
     eval_config['batch_size'] = 1
+    model_dir = config["model_dir"]
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
 
@@ -217,10 +212,10 @@ def main():
             mtest = PTBModel(is_training=False, config=eval_config)
 
         session.run(tf.global_variables_initializer())
-        if train_type == 1:
-            new_saver = tf.train.Saver()
-            new_saver.restore(session, tf.train.latest_checkpoint(
-                model_dir))
+        # if train_type == 1:
+        #     new_saver = tf.train.Saver()
+        #     new_saver.restore(session, tf.train.latest_checkpoint(
+        #         model_dir))
         for v in tf.global_variables():
             print(v.name)
         saver = tf.train.Saver()
