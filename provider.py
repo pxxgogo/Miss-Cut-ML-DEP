@@ -5,6 +5,7 @@ from os import path as op
 
 import numpy as np
 import random
+import tensorflow as tf
 
 # from memory_profiler import profile
 
@@ -27,6 +28,7 @@ class ptb_data_provider(object):
         self.training_corpus_num = 0
         self.test_corpus_path = ""
         self.dev_corpus_path = ""
+        self.current_epoch_size = -1
         self._parse_config()
 
     def _parse_config(self):
@@ -37,7 +39,7 @@ class ptb_data_provider(object):
             self.data_dir = self.config['data_dir']
             assert op.isdir(self.data_dir) and os.access(self.data_dir, os.R_OK)
             self.filenames = os.listdir(self.data_dir)
-
+            self.batch_size = self.config["batch_size"]
             for filename in self.filenames:
                 if not filename.endswith("dat.npy"):
                     continue
@@ -78,13 +80,6 @@ class ptb_data_provider(object):
                     return False, "File {} not accessible"
         return True, "Accepted"
 
-    def decoder(self, file_path):
-        ret_list = np.fromfile(file_path, dtype=np.int16, sep=" ")
-        print("total words:", ret_list.shape[0])
-        index_list = np.fromfile(file_path + '.index', dtype=np.int64, sep=" ")
-        print("total lines:", index_list.shape[0])
-        return ret_list, index_list
-
 
 
     def get_epoch_size(self, data):
@@ -102,46 +97,56 @@ class ptb_data_provider(object):
 
     def get_training_data(self):
         training_corpus_index = -1
-        sequence_length = np.ones(self.batch_size, dtype=np.int16) * self.config["sequence_length"]
+        batch_words_num = self.batch_size * self.config["sequence_length"]
         while training_corpus_index < self.training_corpus_num:
             training_corpus_index += 1
             training_corpus_path = self.training_corpus_paths[training_corpus_index]
-            training_data = np.load(training_corpus_path)
-            epoch_size = self.get_epoch_size(training_data)
+            training_data_np = np.load(training_corpus_path)
+            self.current_epoch_size = self.get_epoch_size(training_data_np)
             print("TRAINING_FILE_PATH: %s, EPOCH_SIZE: %d" % (training_corpus_path, epoch_size))
-            for i in range(epoch_size):
-                data = training_data[i * self.batch_size: (i + 1) * self.batch_size]
-                yield data, sequence_length
+            training_dataset = tf.data.Dataset.from_tensor_slices(training_data_np)
+            training_dataset = training_dataset.shuffle(buffer_size=100000).batch(self.batch_size)
+            training_dataset_iterator = training_dataset.make_initializable_iterator()
+            yield training_dataset_iterator, batch_words_num
 
 
 
     def get_dev_test_data(self):
-        sequence_length = np.ones(self.batch_size, dtype=np.int16) * self.config["sequence_length"]
         if self.status == "dev":
-            corpus_data = np.load(self.dev_corpus_path)
-            epoch_size = self.get_epoch_size(corpus_data)
+            batch_words_num = self.batch_size * self.config["sequence_length"]
+            corpus_data_np = np.load(self.dev_corpus_path)
+            self.current_epoch_size = self.get_epoch_size(corpus_data_np)
             print("DEV_FILE_PATH: %s, EPOCH_SIZE: %d" % (self.dev_corpus_path, epoch_size))
-            for i in range(epoch_size):
-                data = corpus_data[i * self.batch_size: (i + 1) * self.batch_size]
-                yield data, sequence_length
-        else:
-            corpus_data = np.load(self.test_corpus_path)
-            epoch_size = self.get_epoch_size(corpus_data)
-            print("TEST_FILE_PATH: %s, EPOCH_SIZE: %d" % (self.test_corpus_path, epoch_size))
-            for i in range(epoch_size):
-                data = corpus_data[i: (i + 1)]
-                yield data, sequence_length
+            dev_dataset = tf.data.Dataset.from_tensor_slices(corpus_data_np)
+            dev_dataset = dev_dataset.shuffle(buffer_size=100000).batch(self.batch_size)
+            dev_dataset_iterator = dev_dataset.make_initializable_iterator()
+            yield dev_dataset_iterator, batch_words_num
 
+        else:
+            batch_words_num = self.batch_size
+            corpus_data_np = np.load(self.test_corpus_path)
+            self.current_epoch_size = self.get_epoch_size(corpus_data_np)
+            print("TEST_FILE_PATH: %s, EPOCH_SIZE: %d" % (self.test_corpus_path, epoch_size))
+            test_dataset = tf.data.Dataset.from_tensor_slices(corpus_data_np)
+            test_dataset = test_dataset.shuffle(buffer_size=100000)
+            test_dataset_iterator = test_dataset.make_one_shot_iterator()
+            yield test_dataset_iterator, batch_words_num
+
+    def get_current_epoch_size(self):
+        return self.current_epoch_size
+
+    def get_config(self):
+        return self.config
 
     def __call__(self):
         self.status = self.status.strip().lower()
         if self.status == 'train':
             self.init_training_corpus()
-            for data, length in self.get_training_data():
-                yield data, length
+            for data_iterator, batch_words_num in self.get_training_data():
+                yield data_iterator.get_next(), batch_words_num
         else:
-            for data, length in self.get_dev_test_data():
-                yield  data, length
+            for data_iterator, batch_words_num in self.get_dev_test_data():
+                yield data_iterator.get_next(), batch_words_num
 
 
 if __name__ == "__main__":
