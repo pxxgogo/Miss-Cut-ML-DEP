@@ -56,8 +56,7 @@ class PTBModel(object):
             self._dataset = self._dataset.shuffle(buffer_size=100000).apply(
                 tf.contrib.data.batch_and_drop_remainder(self._batch_size))
             self._dataset_iterator = self._dataset.make_initializable_iterator()
-            costs = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
-            self._cost_op = tf.reduce_mean(costs)
+            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
             # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
             # with tf.device("/cpu:0"):
             self.update_model(self._cost_op)
@@ -68,8 +67,7 @@ class PTBModel(object):
                 tf.contrib.data.batch_and_drop_remainder(self._batch_size))
             self._dataset_iterator = self._dataset.make_initializable_iterator()
             # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
-            costs = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
-            self._cost_op = tf.reduce_mean(costs)
+            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
 
         else:
             self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
