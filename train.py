@@ -37,7 +37,7 @@ def make_parallel(fn, num_gpus, **kwargs):
             with tf.variable_scope(tf.get_variable_scope(), reuse=tf.AUTO_REUSE):
                 out_split.append(fn(**{k: v[i] for k, v in in_splits.items()}))
 
-    return tf.concat(out_split, axis=0)
+    return tf.reduce_mean(out_split)
 
 
 class PTBModel(object):
@@ -153,7 +153,7 @@ class PTBModel(object):
     def update_model(self, cost):
         self._lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
-        grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
+        grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars, colocate_gradients_with_ops=True),
                                           self._config['max_grad_norm'])
         optimizer = tf.train.AdamOptimizer(self._lr)
         self._train_op = optimizer.apply_gradients(zip(grads, tvars))
