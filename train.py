@@ -48,7 +48,6 @@ class PTBModel(object):
         self._hidden_size = config['hidden_size']
         self._word_vocab_size = config['word_vocab_size']
         self._label_vocab_size = config['label_vocab_size']
-        self._sequence_length = np.ones(self._batch_size, dtype=np.int16) * config["sequence_length"]
         self._config = config
         self._state = state
         self._data_placeholder = tf.placeholder(tf.int32, [None, self._config["sequence_length"]])
@@ -115,11 +114,12 @@ class PTBModel(object):
             [word_inputs[:, 0:1], label_inputs[:, 0:1], word_inputs[:, 1:2], label_inputs[:, 1:2]], axis=1)
         words_targets = input_data[:, 1:3]
         labels_targets = input_data[:, 3:5]
+        sequence_length = np.ones(input_data.shape[0], dtype=np.int16) * self._config["sequence_length"]
         with tf.variable_scope("RNN"):
             outputs, last_states = tf.nn.dynamic_rnn(
                 cell=cell,
                 dtype=data_type(),
-                sequence_length=self._sequence_length,
+                sequence_length=sequence_length,
                 inputs=inputs)
         # print(outputs)
 
