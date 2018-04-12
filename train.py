@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 
-import argparse
 import os
 import time
 from datetime import datetime
@@ -30,39 +29,61 @@ def data_type():
 class PTBModel(object):
     """The PTB model."""
 
-    def __init__(self, is_training, config):
-        self.batch_size = config['batch_size']
-        self.hidden_size = config['hidden_size']
-        self.word_vocab_size = config['word_vocab_size']
-        self.label_vocab_size = config['label_vocab_size']
+    def __init__(self, config, state):
+        self._batch_size = config['batch_size']
+        self._hidden_size = config['hidden_size']
+        self._word_vocab_size = config['word_vocab_size']
+        self._label_vocab_size = config['label_vocab_size']
+        self._sequence_length = np.ones(self._batch_size, dtype=np.int16) * config["sequence_length"]
+        self._config = config
+        self._state = state
+        self._data_placeholder = tf.placeholder(tf.int32, [None, self._config["sequence_length"]])
+        if state == 'train':
+            self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
+            self._dataset = self._dataset.shuffle(buffer_size=100000).apply(
+                tf.contrib.data.batch_and_drop_remainder(self._batch_size))
+            self._dataset_iterator = self._dataset.make_initializable_iterator()
+            self._cost_op = self.calculate_cost(self._dataset_iterator.get_next(), True)
+            self.update_model(self._cost_op)
 
-        self._input_data = tf.placeholder(tf.int32, [self.batch_size, config["sequence_length"]])
-        self._sequence_length = tf.placeholder(tf.int16, [self.batch_size])
+        elif state == 'dev':
+            self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
+            self._dataset = self._dataset.shuffle(buffer_size=100000).apply(
+                tf.contrib.data.batch_and_drop_remainder(self._batch_size))
+            self._dataset_iterator = self._dataset.make_initializable_iterator()
+            self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
+
+        else:
+            self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
+            self._dataset = self._dataset.shuffle(buffer_size=100000)
+            self._dataset_iterator = self._dataset.make_initializable_iterator()
+            data_tensor = tf.reshape(self._dataset_iterator.get_next(), [1, -1])
+            self._cost_op = self.calculate_cost(data_tensor)
+
+
+
+    def calculate_cost(self, input_data, is_training=False):
 
         rnn_cell_list = []
-        for nn_info in config["nns_info"]:
-            with tf.device(nn_info["device"]):
-                rnn_cell = tf.contrib.rnn.BasicLSTMCell(self.hidden_size, forget_bias=0.0, state_is_tuple=True)
-                # rnn_cell = tf.contrib.rnn.GRUCell(size)
+        for nn_info in self._config['nns_info']:
+            rnn_cell = tf.contrib.rnn.BasicLSTMCell(self._hidden_size, forget_bias=0.0, state_is_tuple=True)
+            # rnn_cell = tf.contrib.rnn.GRUCell(size)
 
-                if is_training and config['keep_prob'] < 1:
-                    rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell, output_keep_prob=config['keep_prob'])
+            if is_training and self._config['keep_prob'] < 1:
+                rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell, output_keep_prob=self._config['keep_prob'])
             rnn_cell_list.append(rnn_cell)
 
         cell = tf.contrib.rnn.MultiRNNCell(rnn_cell_list, state_is_tuple=True)
+        word_embedding = tf.get_variable("word_embedding", [self._word_vocab_size, self._hidden_size],
+                                         dtype=data_type())
+        label_embedding = tf.get_variable("label_embedding", [self._label_vocab_size, self._hidden_size],
+                                          dtype=data_type())
+        word_inputs = tf.nn.embedding_lookup(word_embedding, input_data[:, :2])
+        label_inputs = tf.nn.embedding_lookup(label_embedding, input_data[:, 3:])
 
-        with tf.device(config["embedding_device"]):
-
-            word_embedding = tf.get_variable("word_embedding", [self.word_vocab_size, self.hidden_size],
-                                             dtype=data_type())
-            label_embedding = tf.get_variable("label_embedding", [self.label_vocab_size, self.hidden_size],
-                                              dtype=data_type())
-            word_inputs = tf.nn.embedding_lookup(word_embedding, self._input_data[:, :2])
-            label_inputs = tf.nn.embedding_lookup(label_embedding, self._input_data[:, 3:])
-
-        if is_training and config['keep_prob'] < 1:
-            word_inputs = tf.nn.dropout(word_inputs, config['keep_prob'])
-            label_inputs = tf.nn.dropout(label_inputs, config['keep_prob'])
+        if is_training and self._config['keep_prob'] < 1:
+            word_inputs = tf.nn.dropout(word_inputs, self._config['keep_prob'])
+            label_inputs = tf.nn.dropout(label_inputs, self._config['keep_prob'])
 
         # Simplified version of tensorflow.models.rnn.rnn.py's rnn().
         # This builds an unrolled LSTM for tutorial purposes only.
@@ -75,10 +96,8 @@ class PTBModel(object):
         # outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
         inputs = tf.concat(
             [word_inputs[:, 0:1], label_inputs[:, 0:1], word_inputs[:, 1:2], label_inputs[:, 1:2]], axis=1)
-        words_targets = self._input_data[:, 1:3]
-        # words_targets = tf.concat(
-        #     [self._input_data[:, 1], self._input_data[:, 2]], axis=1)
-        labels_targets = tf.concat([self._input_data[:, 3:4], self._input_data[:, 4:5]], axis=1)
+        words_targets = input_data[:, 1:3]
+        labels_targets = tf.concat([input_data[:, 3:4], input_data[:, 4:5]], axis=1)
         with tf.variable_scope("RNN"):
             outputs, last_states = tf.nn.dynamic_rnn(
                 cell=cell,
@@ -91,16 +110,16 @@ class PTBModel(object):
         labels_outputs = tf.concat([outputs[:, 0:1], outputs[:, 2:3]], axis=1)
         # print(words_outputs.shape, labels_outputs.shape)
 
-        words_outputs = tf.reshape(words_outputs, [-1, self.hidden_size])
-        labels_outputs = tf.reshape(labels_outputs, [-1, self.hidden_size])
+        words_outputs = tf.reshape(words_outputs, [-1, self._hidden_size])
+        labels_outputs = tf.reshape(labels_outputs, [-1, self._hidden_size])
 
         word_softmax_w = tf.get_variable(
-            "word_softmax_w", [self.hidden_size, self.word_vocab_size], dtype=data_type())
-        word_softmax_b = tf.get_variable("word_softmax_b", [self.word_vocab_size], dtype=data_type())
+            "word_softmax_w", [self._hidden_size, self._word_vocab_size], dtype=data_type())
+        word_softmax_b = tf.get_variable("word_softmax_b", [self._word_vocab_size], dtype=data_type())
 
         label_softmax_w = tf.get_variable(
-            "label_softmax_w", [self.hidden_size, self.label_vocab_size], dtype=data_type())
-        label_softmax_b = tf.get_variable("label_softmax_b", [self.label_vocab_size], dtype=data_type())
+            "label_softmax_w", [self._hidden_size, self._label_vocab_size], dtype=data_type())
+        label_softmax_b = tf.get_variable("label_softmax_b", [self._label_vocab_size], dtype=data_type())
 
         words_y_flat = tf.reshape(words_targets, [-1])
         labels_y_flat = tf.reshape(labels_targets, [-1])
@@ -111,15 +130,14 @@ class PTBModel(object):
         words_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=words_logits, labels=words_y_flat)
         labels_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=labels_logits, labels=labels_y_flat)
 
-        self._cost = cost = tf.reduce_mean([words_losses, labels_losses])
+        cost = tf.reduce_mean([words_losses, labels_losses])
+        return cost
 
-        if not is_training:
-            return
-
+    def update_model(self, cost):
         self._lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
         grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
-                                          config['max_grad_norm'])
+                                          self._config['max_grad_norm'])
         optimizer = tf.train.AdamOptimizer(self._lr)
         self._train_op = optimizer.apply_gradients(zip(grads, tvars))
 
@@ -130,63 +148,70 @@ class PTBModel(object):
         session.run(self._lr_update, feed_dict={self._new_lr: lr_value})
 
     @property
-    def input_data(self):
-        return self._input_data
-
-    @property
-    def sequence_length(self):
-        return self._sequence_length
-
-    @property
-    def cost(self):
-        return self._cost
+    def train_op(self):
+        return self._train_op
 
     @property
     def lr(self):
         return self._lr
 
     @property
-    def train_op(self):
-        return self._train_op
+    def dataset_iterator(self):
+        return self._dataset_iterator
+
+    @property
+    def cost_op(self):
+        return self._cost_op
+
+    @property
+    def data_placeholder(self):
+        return self._data_placeholder
 
 
 # @make_spin(Spin1, "Running epoch...")
-def run_epoch(session, model, provider, status, eval_op, verbose=False):
+def run_epoch(session, model, provider, status, config, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
     stage_time = time.time()
     costs = 0.0
     iters = 0
     words = 0
+    eval_op = tf.no_op()
     provider.status = status
-    for step, (x, length) in enumerate(provider()):
-        fetches = [model.cost, eval_op]
-        feed_dict = {}
-        feed_dict[model.input_data] = x
-        feed_dict[model.sequence_length] = length
-        max_length = length[len(length) - 1]
-        cost, _ = session.run(fetches, feed_dict)
-        costs += cost
-        iters += 1
-        words += max_length
-        if step % 1000 == 0:
-            print(cost, end='\r')
+    for data, batch_words_num in provider():
+        data_flag = True
         epoch_size = provider.get_current_epoch_size()
-        divider = epoch_size // 100
-        divider_10 = epoch_size // 10
-        if divider == 0:
-            divider = 1
-        if verbose and step % divider == 0:
-            if not step % divider_10 == 0:
-                print("         %.3f perplexity: %.3f time cost: %.3fs" %
-                      (step * 1.0 / epoch_size, np.exp(costs / iters),
-                       time.time() - stage_time), end='\r')
-        if verbose and step % divider_10 == 0:
-            print("%.3f perplexity: %.3f speed: %.0f wps time cost: %.3fs" %
-                  (step * 1.0 / epoch_size, np.exp(costs / iters),
-                   words * model.batch_size / (time.time() - start_time), time.time() - stage_time))
-
-            stage_time = time.time()
+        sub_iters = 0
+        session.run(model.dataset_iterator.initializer, feed_dict={model.data_placeholder: data})
+        while data_flag:
+            # print(sub_iters)
+            try:
+                if status == "train":
+                    eval_op = model.train_op
+                cost, _ = session.run([model.cost_op, eval_op])
+                # print(cost)
+                costs += cost
+                words += batch_words_num
+                iters += 1
+                sub_iters += 1
+                if iters % 1000 == 0:
+                    print("current_loss: %.3f" % cost)
+                divider = epoch_size // 100
+                divider_10 = epoch_size // 10
+                if divider == 0:
+                    divider = 1
+                if verbose and sub_iters % divider == 0:
+                    if not sub_iters % divider_10 == 0:
+                        print("         %.3f perplexity: %.3f time cost: %.3fs" %
+                              (sub_iters * 1.0 / epoch_size, np.exp(costs / iters),
+                               time.time() - stage_time), end='\r')
+                if verbose and sub_iters % divider_10 == 0:
+                    print("%.3f perplexity: %.3f speed: %.0f wps time cost: %.3fs" %
+                          (sub_iters * 1.0 / epoch_size, np.exp(costs / iters),
+                           words * model.batch_size / (time.time() - start_time), time.time() - stage_time))
+                    stage_time = time.time()
+            except tf.errors.OutOfRangeError:
+                data_flag = False
     return np.exp(costs / iters)
 
 
@@ -199,6 +224,7 @@ def main():
     model_dir = config["model_dir"]
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
+    restored_type = config["restored_type"]
 
     # print (config)
     # print (eval_config)
@@ -206,41 +232,44 @@ def main():
     with tf.Graph().as_default(), tf.Session(config=session_config) as session:
         initializer = tf.random_uniform_initializer(-config['init_scale'], config['init_scale'])
         with tf.variable_scope("model", reuse=None, initializer=initializer):
-            m = PTBModel(is_training=True, config=config)
+            m = PTBModel(config=config, state='train')
         with tf.variable_scope("model", reuse=True, initializer=initializer):
-            mdev = PTBModel(is_training=False, config=config)
-            mtest = PTBModel(is_training=False, config=eval_config)
+            mdev = PTBModel(config=config, state='dev')
+            mtest = PTBModel(config=eval_config, state='test')
 
         session.run(tf.global_variables_initializer())
-        # if train_type == 1:
-        #     new_saver = tf.train.Saver()
-        #     new_saver.restore(session, tf.train.latest_checkpoint(
-        #         model_dir))
+        if restored_type == 1:
+            new_saver = tf.train.Saver()
+            new_saver.restore(session, tf.train.latest_checkpoint(
+                config["model_dir"]))
         for v in tf.global_variables():
             print(v.name)
         saver = tf.train.Saver()
         for i in range(config['max_max_epoch']):
             m.assign_lr(session, config['learning_rate'])
-            print("Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr)))
+            session.run(m.lr)
+            print("Epoch: %d" % i)
             print("Starting Time:", datetime.now())
-            train_perplexity = run_epoch(session, m, provider, 'train', m.train_op, verbose=True)
+            train_perplexity = run_epoch(session, m, provider, 'train', config, verbose=True)
             print("Epoch: %d Train Perplexity: %.3f" % (i + 1, train_perplexity))
             print("Ending Time:", datetime.now())
             save_path = saver.save(session, os.path.join(model_dir, 'misscut_rnn_model'), global_step=i)
             print("Model saved in file: %s" % save_path)
             print("Starting Time:", datetime.now())
-            dev_perplexity = run_epoch(session, mdev, provider, 'dev', tf.no_op())
+            dev_perplexity = run_epoch(session, mdev, provider, 'dev', config)
             print("Epoch: %d Valid Perplexity: %.3f" % (i + 1, dev_perplexity))
             print("Ending Time:", datetime.now())
             if (i % 13 == 0 and not i == 0):
                 print("Starting Time:", datetime.now())
-                test_perplexity = run_epoch(session, mtest, provider, 'test', tf.no_op())
+                test_perplexity = run_epoch(session, mtest, provider, 'test', eval_config)
                 print("Test Perplexity: %.3f" % test_perplexity)
                 print("Ending Time:", datetime.now())
 
-        test_perplexity = run_epoch(session, mtest, provider, 'test', tf.no_op())
+        test_perplexity = run_epoch(session, m, provider, 'test', eval_config)
         print("Test Perplexity: %.3f" % test_perplexity)
 
 
 if __name__ == "__main__":
     main()
+
+
