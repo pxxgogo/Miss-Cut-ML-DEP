@@ -4,13 +4,8 @@
   "output_size": 1024,
   "keep_prob": 0.7,
   "hidden_size": 256,
-  "nns_info": [{
-    "device": "/gpu:0"
-  },
-    {
-    "device": "/gpu:0"
-  }],
-  "embedding_device": "/gpu:0",
+  "layer_num": 2,
+  "gpu_num": 1,
   "data_dir": "/home/pxxgogo/misscut/data/dependency_ML_corpus/mini",
   "model_dir": "model_mini",
   "vocab_name": "corpus.vocab",

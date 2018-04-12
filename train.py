@@ -26,6 +26,20 @@ def data_type():
     return tf.float16 if FLAGS.use_fp16 else tf.float32
 
 
+def make_parallel(fn, num_gpus, **kwargs):
+    in_splits = {}
+    for k, v in kwargs.items():
+        in_splits[k] = tf.split(v, num_gpus)
+
+    out_split = []
+    for i in range(num_gpus):
+        with tf.device(tf.DeviceSpec(device_type="GPU", device_index=i)):
+            with tf.variable_scope(tf.get_variable_scope(), reuse=tf.AUTO_REUSE):
+                out_split.append(fn(**{k: v[i] for k, v in in_splits.items()}))
+
+    return tf.concat(out_split, axis=0)
+
+
 class PTBModel(object):
     """The PTB model."""
 
@@ -43,7 +57,10 @@ class PTBModel(object):
             self._dataset = self._dataset.shuffle(buffer_size=100000).apply(
                 tf.contrib.data.batch_and_drop_remainder(self._batch_size))
             self._dataset_iterator = self._dataset.make_initializable_iterator()
-            self._cost_op = self.calculate_cost(self._dataset_iterator.get_next(), True)
+            costs = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
+            self._cost_op = tf.reduce_mean(costs)
+            # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
+            # with tf.device("/cpu:0"):
             self.update_model(self._cost_op)
 
         elif state == 'dev':
@@ -51,7 +68,9 @@ class PTBModel(object):
             self._dataset = self._dataset.shuffle(buffer_size=100000).apply(
                 tf.contrib.data.batch_and_drop_remainder(self._batch_size))
             self._dataset_iterator = self._dataset.make_initializable_iterator()
-            self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
+            # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
+            costs = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
+            self._cost_op = tf.reduce_mean(costs)
 
         else:
             self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
@@ -60,16 +79,14 @@ class PTBModel(object):
             data_tensor = tf.reshape(self._dataset_iterator.get_next(), [1, -1])
             self._cost_op = self.calculate_cost(data_tensor)
 
-
-
-    def calculate_cost(self, input_data, is_training=False):
+    def calculate_cost(self, input_data):
 
         rnn_cell_list = []
-        for nn_info in self._config['nns_info']:
+        for nn_info in range(self._config['layer_num']):
             rnn_cell = tf.contrib.rnn.BasicLSTMCell(self._hidden_size, forget_bias=0.0, state_is_tuple=True)
             # rnn_cell = tf.contrib.rnn.GRUCell(size)
 
-            if is_training and self._config['keep_prob'] < 1:
+            if self._state == 'train' and self._config['keep_prob'] < 1:
                 rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell, output_keep_prob=self._config['keep_prob'])
             rnn_cell_list.append(rnn_cell)
 
@@ -81,7 +98,7 @@ class PTBModel(object):
         word_inputs = tf.nn.embedding_lookup(word_embedding, input_data[:, :2])
         label_inputs = tf.nn.embedding_lookup(label_embedding, input_data[:, 3:])
 
-        if is_training and self._config['keep_prob'] < 1:
+        if self._state == 'train' and self._config['keep_prob'] < 1:
             word_inputs = tf.nn.dropout(word_inputs, self._config['keep_prob'])
             label_inputs = tf.nn.dropout(label_inputs, self._config['keep_prob'])
 
@@ -166,6 +183,7 @@ class PTBModel(object):
     @property
     def data_placeholder(self):
         return self._data_placeholder
+
 
 # @make_spin(Spin1, "Running epoch...")
 def run_epoch(session, model, provider, status, config, verbose=False):
@@ -270,5 +288,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
