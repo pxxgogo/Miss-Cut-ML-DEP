@@ -97,7 +97,7 @@ class PTBModel(object):
         inputs = tf.concat(
             [word_inputs[:, 0:1], label_inputs[:, 0:1], word_inputs[:, 1:2], label_inputs[:, 1:2]], axis=1)
         words_targets = input_data[:, 1:3]
-        labels_targets = tf.concat([input_data[:, 3:4], input_data[:, 4:5]], axis=1)
+        labels_targets = input_data[:, 3:5]
         with tf.variable_scope("RNN"):
             outputs, last_states = tf.nn.dynamic_rnn(
                 cell=cell,
@@ -167,7 +167,6 @@ class PTBModel(object):
     def data_placeholder(self):
         return self._data_placeholder
 
-
 # @make_spin(Spin1, "Running epoch...")
 def run_epoch(session, model, provider, status, config, verbose=False):
     """Runs the model on the given data."""
@@ -195,20 +194,20 @@ def run_epoch(session, model, provider, status, config, verbose=False):
                 iters += 1
                 sub_iters += 1
                 if iters % 1000 == 0:
-                    print("current_loss: %.3f" % cost)
+                    print("current_loss: %.3f" % cost, end='\r')
                 divider = epoch_size // 100
                 divider_10 = epoch_size // 10
                 if divider == 0:
                     divider = 1
                 if verbose and sub_iters % divider == 0:
                     if not sub_iters % divider_10 == 0:
-                        print("         %.3f perplexity: %.3f time cost: %.3fs" %
+                        print("                         %.3f perplexity: %.3f time cost: %.3fs" %
                               (sub_iters * 1.0 / epoch_size, np.exp(costs / iters),
                                time.time() - stage_time), end='\r')
                 if verbose and sub_iters % divider_10 == 0:
                     print("%.3f perplexity: %.3f speed: %.0f wps time cost: %.3fs" %
                           (sub_iters * 1.0 / epoch_size, np.exp(costs / iters),
-                           words * model.batch_size / (time.time() - start_time), time.time() - stage_time))
+                           words * config["batch_size"] / (time.time() - start_time), time.time() - stage_time))
                     stage_time = time.time()
             except tf.errors.OutOfRangeError:
                 data_flag = False
