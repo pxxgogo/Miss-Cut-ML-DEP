@@ -80,8 +80,8 @@ class PTBModel(object):
 
         rnn_cell_list = []
         for nn_info in range(self._config['layer_num']):
-            rnn_cell = tf.contrib.rnn.BasicLSTMCell(self._hidden_size, forget_bias=0.0, state_is_tuple=True)
-            # rnn_cell = tf.contrib.rnn.GRUCell(size)
+            # rnn_cell = tf.contrib.rnn.BasicGRUCell(self._hidden_size, forget_bias=0.0, state_is_tuple=True)
+            rnn_cell = tf.contrib.rnn.GRUCell(self._hidden_size)
 
             if self._state == 'train' and self._config['keep_prob'] < 1:
                 rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell, output_keep_prob=self._config['keep_prob'])
