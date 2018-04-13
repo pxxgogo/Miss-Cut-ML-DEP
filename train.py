@@ -87,24 +87,31 @@ class PTBModel(object):
             is_training = True
         else:
             is_training = False
-        self._cell = tf.contrib.cudnn_rnn.CudnnLSTM(
-            num_layers=self._layer_num,
-            num_units=self._hidden_size,
-            dropout=1 - self._config["keep_prob"] if is_training else 0)
-        params_size_t = self._cell.params_size()
-        self._rnn_params = tf.get_variable(
-            "lstm_params",
-            initializer=tf.random_uniform(
-                [params_size_t], -self._config["init_scale"], self._config["init_scale"]),
-            validate_shape=False)
-        c = tf.zeros([self._layer_num, self._batch_size, self._hidden_size],
-                     tf.float32)
-        h = tf.zeros([self._layer_num, self._batch_size, self._hidden_size],
-                     tf.float32)
-        self._initial_state = (tf.contrib.rnn.LSTMStateTuple(h=h, c=c),)
-        outputs, h, c = self._cell(inputs, h, c, self._rnn_params, is_training)
+        # self._cell = tf.contrib.cudnn_rnn.CudnnLSTM(
+        #     num_layers=self._layer_num,
+        #     num_units=self._hidden_size,
+        #     dropout=1 - self._config["keep_prob"] if is_training else 0)
+        # params_size_t = self._cell.params_size()
+        # self._rnn_params = tf.get_variable(
+        #     "lstm_params",
+        #     initializer=tf.random_uniform(
+        #         [params_size_t], -self._config["init_scale"], self._config["init_scale"]),
+        #     validate_shape=False)
+        initializer = tf.random_uniform_initializer(-self._config['init_scale'], self._config['init_scale'])
+        self._cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=self._layer_num,
+                                             num_units=self._hidden_size,
+                                             dropout=1 - self._config['keep_prob'] if is_training else 0,
+                                             kernel_initializer=initializer,
+                                             bias_initializer=initializer
+                                             )
+        # c = tf.zeros([self._layer_num, self._batch_size, self._hidden_size],
+        #              tf.float32)
+        # h = tf.zeros([self._layer_num, self._batch_size, self._hidden_size],
+        #              tf.float32)
+        # self._initial_state = (tf.contrib.rnn.LSTMStateTuple(h=h, c=c),)
+        outputs, final_state = self._cell(inputs)
         outputs = tf.transpose(outputs, [1, 0, 2])
-        return outputs, (tf.contrib.rnn.LSTMStateTuple(h=h, c=c),)
+        return outputs, final_state
 
     def calculate_cost(self, input_data):
 
@@ -114,6 +121,12 @@ class PTBModel(object):
                                           dtype=data_type())
         word_inputs = tf.nn.embedding_lookup(word_embedding, input_data[:, :2])
         label_inputs = tf.nn.embedding_lookup(label_embedding, input_data[:, 3:])
+
+        if self._state == 'train':
+            is_training = True
+        else:
+            is_training = False
+
 
         if self._state == 'train' and self._config['keep_prob'] < 1:
             word_inputs = tf.nn.dropout(word_inputs, self._config['keep_prob'])
