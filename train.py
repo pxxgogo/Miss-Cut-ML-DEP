@@ -228,10 +228,12 @@ def run_epoch(session, model, provider, status, config, verbose=False, saver=Non
                     stage_time = time.time()
             except tf.errors.OutOfRangeError:
                 data_flag = False
-            if saver:
-                save_path = saver.save(session, os.path.join(config["model_dir"], 'misscut_rnn_model'), global_step=corpus_No)
-                print("Model saved in file: %s" % save_path)
-            corpus_No += 1
+                if saver:
+                    save_path = saver.save(session, os.path.join(config["model_dir"], 'misscut_rnn_model'),
+                                           global_step=corpus_No)
+                    print("Model saved in file: %s" % save_path)
+                corpus_No += 1
+
     return np.exp(costs / iters)
 
 
