@@ -50,13 +50,15 @@ class PTBModel(object):
         self._label_vocab_size = config['label_vocab_size']
         self._config = config
         self._state = state
+        self._layer_num = self._config["layer_num"]
         self._data_placeholder = tf.placeholder(tf.int32, [None, self._config["sequence_length"]])
         if state == 'train':
             self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
             self._dataset = self._dataset.shuffle(buffer_size=100000).apply(
                 tf.contrib.data.batch_and_drop_remainder(self._batch_size))
             self._dataset_iterator = self._dataset.make_initializable_iterator()
-            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
+            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"],
+                                          input_data=self._dataset_iterator.get_next())
             # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
             # with tf.device("/cpu:0"):
             self.update_model(self._cost_op)
@@ -67,7 +69,8 @@ class PTBModel(object):
                 tf.contrib.data.batch_and_drop_remainder(self._batch_size))
             self._dataset_iterator = self._dataset.make_initializable_iterator()
             # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
-            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
+            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"],
+                                          input_data=self._dataset_iterator.get_next())
 
         else:
             self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
@@ -76,18 +79,36 @@ class PTBModel(object):
             data_tensor = tf.reshape(self._dataset_iterator.get_next(), [1, -1])
             self._cost_op = self.calculate_cost(data_tensor)
 
+    def _build_rnn_graph_cudnn(self, inputs):
+        """Build the inference graph using CUDNN cell."""
+        inputs = tf.transpose(inputs, [1, 0, 2])
+
+        if self._state == 'train':
+            is_training = True
+        else:
+            is_training = False
+        self._cell = tf.contrib.cudnn_rnn.CudnnLSTM(
+            num_layers=self._layer_num,
+            num_units=self._hidden_size,
+            input_size=self._hidden_size,
+            dropout=1 - self._config["keep_prob"] if is_training else 0)
+        params_size_t = self._cell.params_size()
+        self._rnn_params = tf.get_variable(
+            "lstm_params",
+            initializer=tf.random_uniform(
+                [params_size_t], -self._config["init_scale"], self._config["init_scale"]),
+            validate_shape=False)
+        c = tf.zeros([self._layer_num, self._batch_size, self._hidden_size],
+                     tf.float32)
+        h = tf.zeros([self._layer_num, self._batch_size, self._hidden_size],
+                     tf.float32)
+        self._initial_state = (tf.contrib.rnn.LSTMStateTuple(h=h, c=c),)
+        outputs, h, c = self._cell(inputs, h, c, self._rnn_params, is_training)
+        outputs = tf.transpose(outputs, [1, 0, 2])
+        return outputs, (tf.contrib.rnn.LSTMStateTuple(h=h, c=c),)
+
     def calculate_cost(self, input_data):
 
-        rnn_cell_list = []
-        for nn_info in range(self._config['layer_num']):
-            # rnn_cell = tf.contrib.rnn.BasicGRUCell(self._hidden_size, forget_bias=0.0, state_is_tuple=True)
-            rnn_cell = tf.contrib.rnn.GRUCell(self._hidden_size)
-
-            if self._state == 'train' and self._config['keep_prob'] < 1:
-                rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell, output_keep_prob=self._config['keep_prob'])
-            rnn_cell_list.append(rnn_cell)
-
-        cell = tf.contrib.rnn.MultiRNNCell(rnn_cell_list, state_is_tuple=True)
         word_embedding = tf.get_variable("word_embedding", [self._word_vocab_size, self._hidden_size],
                                          dtype=data_type())
         label_embedding = tf.get_variable("label_embedding", [self._label_vocab_size, self._hidden_size],
@@ -110,15 +131,13 @@ class PTBModel(object):
         # outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
         inputs = tf.concat(
             [word_inputs[:, 0:1], label_inputs[:, 0:1], word_inputs[:, 1:2], label_inputs[:, 1:2]], axis=1)
+
+        outputs, final_state = self._build_rnn_graph_cudnn(inputs)
+        print(outputs.shape)
+
         words_targets = input_data[:, 1:3]
         labels_targets = input_data[:, 3:5]
-        sequence_length = np.ones(input_data.shape[0], dtype=np.int16) * self._config["sequence_length"]
-        with tf.variable_scope("RNN"):
-            outputs, last_states = tf.nn.dynamic_rnn(
-                cell=cell,
-                dtype=data_type(),
-                sequence_length=sequence_length,
-                inputs=inputs)
+
         # print(outputs)
 
         words_outputs = tf.concat([outputs[:, 1:2], outputs[:, 3:4]], axis=1)
