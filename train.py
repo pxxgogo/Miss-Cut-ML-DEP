@@ -78,16 +78,29 @@ class PTBModel(object):
 
     def calculate_cost(self, input_data):
 
-        rnn_cell_list = []
+        word_rnn_cell_list = []
         for nn_info in range(self._config['layer_num']):
             # rnn_cell = tf.contrib.rnn.BasicGRUCell(self._hidden_size, forget_bias=0.0, state_is_tuple=True)
             rnn_cell = tf.contrib.rnn.GRUCell(self._hidden_size)
 
             if self._state == 'train' and self._config['keep_prob'] < 1:
                 rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell, output_keep_prob=self._config['keep_prob'])
-            rnn_cell_list.append(rnn_cell)
+            word_rnn_cell_list.append(rnn_cell)
 
-        cell = tf.contrib.rnn.MultiRNNCell(rnn_cell_list, state_is_tuple=True)
+        word_cell = tf.contrib.rnn.MultiRNNCell(word_rnn_cell_list, state_is_tuple=True)
+
+        label_rnn_cell_list = []
+        for nn_info in range(self._config['layer_num']):
+            # rnn_cell = tf.contrib.rnn.BasicGRUCell(self._hidden_size, forget_bias=0.0, state_is_tuple=True)
+            rnn_cell = tf.contrib.rnn.GRUCell(self._hidden_size)
+
+            if self._state == 'train' and self._config['keep_prob'] < 1:
+                rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell, output_keep_prob=self._config['keep_prob'])
+            label_rnn_cell_list.append(rnn_cell)
+
+        label_cell = tf.contrib.rnn.MultiRNNCell(label_rnn_cell_list, state_is_tuple=True)
+
+
         word_embedding = tf.get_variable("word_embedding", [self._word_vocab_size, self._hidden_size],
                                          dtype=data_type())
         label_embedding = tf.get_variable("label_embedding", [self._label_vocab_size, self._hidden_size],
@@ -112,14 +125,17 @@ class PTBModel(object):
             [word_inputs[:, 0:1], label_inputs[:, 0:1], word_inputs[:, 1:2], label_inputs[:, 1:2]], axis=1)
         words_targets = input_data[:, 1:3]
         labels_targets = input_data[:, 3:5]
-        sequence_length = np.ones(input_data.shape[0], dtype=np.int16) * self._config["sequence_length"]
-        with tf.variable_scope("RNN"):
-            outputs, last_states = tf.nn.dynamic_rnn(
-                cell=cell,
-                dtype=data_type(),
-                sequence_length=sequence_length,
-                inputs=inputs)
+        initial_state = state = word_cell.zero_state(self._batch_size, tf.float32)
+        outputs = []
+        for i in range(self._config["sequence_length"] - 1):
+            if i % 2 == 0:
+                output, state = word_cell(inputs[:, i], state)
+            else:
+                output, state = label_cell(inputs[:, i], state)
+            outputs.append(output)
+            # print(output.shape)
         # print(outputs)
+        outputs = tf.transpose(outputs, perm=[1, 0, 2])
 
         words_outputs = tf.concat([outputs[:, 1:2], outputs[:, 3:4]], axis=1)
         labels_outputs = tf.concat([outputs[:, 0:1], outputs[:, 2:3]], axis=1)
