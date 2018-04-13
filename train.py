@@ -90,7 +90,6 @@ class PTBModel(object):
         self._cell = tf.contrib.cudnn_rnn.CudnnLSTM(
             num_layers=self._layer_num,
             num_units=self._hidden_size,
-            input_size=self._hidden_size,
             dropout=1 - self._config["keep_prob"] if is_training else 0)
         params_size_t = self._cell.params_size()
         self._rnn_params = tf.get_variable(
