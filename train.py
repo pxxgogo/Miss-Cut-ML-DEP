@@ -184,7 +184,7 @@ class PTBModel(object):
 
 
 # @make_spin(Spin1, "Running epoch...")
-def run_epoch(session, model, provider, status, config, verbose=False):
+def run_epoch(session, model, provider, status, config, verbose=False, saver=None):
     """Runs the model on the given data."""
     start_time = time.time()
     stage_time = time.time()
@@ -193,6 +193,7 @@ def run_epoch(session, model, provider, status, config, verbose=False):
     words = 0
     eval_op = tf.no_op()
     provider.status = status
+    corpus_No = 0
     for data, batch_words_num in provider():
         data_flag = True
         epoch_size = provider.get_current_epoch_size()
@@ -227,6 +228,10 @@ def run_epoch(session, model, provider, status, config, verbose=False):
                     stage_time = time.time()
             except tf.errors.OutOfRangeError:
                 data_flag = False
+            if saver:
+                save_path = saver.save(session, os.path.join(config["model_dir"], 'misscut_rnn_model'), global_step=corpus_No)
+                print("Model saved in file: %s" % save_path)
+            corpus_No += 1
     return np.exp(costs / iters)
 
 
@@ -265,11 +270,9 @@ def main():
             session.run(m.lr)
             print("Epoch: %d" % i)
             print("Starting Time:", datetime.now())
-            train_perplexity = run_epoch(session, m, provider, 'train', config, verbose=True)
+            train_perplexity = run_epoch(session, m, provider, 'train', config, verbose=True, saver=saver)
             print("Epoch: %d Train Perplexity: %.3f" % (i + 1, train_perplexity))
             print("Ending Time:", datetime.now())
-            save_path = saver.save(session, os.path.join(model_dir, 'misscut_rnn_model'), global_step=i)
-            print("Model saved in file: %s" % save_path)
             print("Starting Time:", datetime.now())
             dev_perplexity = run_epoch(session, mdev, provider, 'dev', config)
             print("Epoch: %d Valid Perplexity: %.3f" % (i + 1, dev_perplexity))
