@@ -51,12 +51,16 @@ class PTBModel(object):
         self._config = config
         self._state = state
         self._data_placeholder = tf.placeholder(tf.int32, [None, self._config["sequence_length"]])
+        self._gpu_num = config["gpu_num"]
+        self._padding_ID = config.get("padding_ID", self._word_vocab_size - 1)
+
         if state == 'train':
             self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
             self._dataset = self._dataset.shuffle(buffer_size=100000).apply(
                 tf.contrib.data.batch_and_drop_remainder(self._batch_size))
             self._dataset_iterator = self._dataset.make_initializable_iterator()
-            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
+            self._cost_op = make_parallel(self.calculate_cost, self._gpu_num,
+                                          input_data=self._dataset_iterator.get_next())
             # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
             # with tf.device("/cpu:0"):
             self.update_model(self._cost_op)
@@ -67,7 +71,8 @@ class PTBModel(object):
                 tf.contrib.data.batch_and_drop_remainder(self._batch_size))
             self._dataset_iterator = self._dataset.make_initializable_iterator()
             # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
-            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"], input_data=self._dataset_iterator.get_next())
+            self._cost_op = make_parallel(self.calculate_cost, self._gpu_num,
+                                          input_data=self._dataset_iterator.get_next())
 
         else:
             self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
@@ -100,7 +105,6 @@ class PTBModel(object):
 
         label_cell = tf.contrib.rnn.MultiRNNCell(label_rnn_cell_list, state_is_tuple=True)
 
-
         word_embedding = tf.get_variable("word_embedding", [self._word_vocab_size, self._hidden_size],
                                          dtype=data_type())
         label_embedding = tf.get_variable("label_embedding", [self._label_vocab_size, self._hidden_size],
@@ -112,6 +116,8 @@ class PTBModel(object):
             word_inputs = tf.nn.dropout(word_inputs, self._config['keep_prob'])
             label_inputs = tf.nn.dropout(label_inputs, self._config['keep_prob'])
 
+        sub_batch_size = self._batch_size / self._gpu_num
+
         # Simplified version of tensorflow.models.rnn.rnn.py's rnn().
         # This builds an unrolled LSTM for tutorial purposes only.
         # In general, use the rnn() or state_saving_rnn() from rnn.py.
@@ -121,14 +127,18 @@ class PTBModel(object):
         # inputs = [tf.squeeze(input_, [1])
         #           for input_ in tf.split(1, num_steps, inputs)]
         # outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
+        padding = tf.ones([sub_batch_size, 1]) * self._padding_ID
         inputs = tf.concat(
-            [word_inputs[:, 0:1], label_inputs[:, 0:1], word_inputs[:, 1:2], label_inputs[:, 1:2]], axis=1)
-        words_targets = input_data[:, 1:3]
+            [padding, word_inputs[:, 0:1], label_inputs[:, 0:1], word_inputs[:, 1:2], label_inputs[:, 1:2]], axis=1)
+
+        words_targets = input_data[:, 0:3]
         labels_targets = input_data[:, 3:5]
-        initial_state = state = word_cell.zero_state(self._batch_size, tf.float32)
+
+        state = word_cell.zero_state(sub_batch_size, tf.float32)
+
         outputs = []
-        for i in range(self._config["sequence_length"] - 1):
-            if i % 2 == 0:
+        for i in range(self._config["sequence_length"]):
+            if i in [0, 1, 3]:
                 output, state = word_cell(inputs[:, i], state)
             else:
                 output, state = label_cell(inputs[:, i], state)
@@ -137,8 +147,8 @@ class PTBModel(object):
         # print(outputs)
         outputs = tf.transpose(outputs, perm=[1, 0, 2])
 
-        words_outputs = tf.concat([outputs[:, 1:2], outputs[:, 3:4]], axis=1)
-        labels_outputs = tf.concat([outputs[:, 0:1], outputs[:, 2:3]], axis=1)
+        words_outputs = tf.concat([outputs[:, 0:1], outputs[:, 2:3], outputs[:, 4:5]], axis=1)
+        labels_outputs = tf.concat([outputs[:, 1:2], outputs[:, 3:4]], axis=1)
         # print(words_outputs.shape, labels_outputs.shape)
 
         words_outputs = tf.reshape(words_outputs, [-1, self._hidden_size])
