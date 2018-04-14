@@ -103,7 +103,7 @@ class PTBModel(object):
                                                    # dropout=1 - self._config['keep_prob'] if is_training else 0,
                                                    kernel_initializer=initializer,
                                                    bias_initializer=initializer,
-                                                   is_training=is_training
+                                                   # is_training=is_training
                                                    )
         # c = tf.zeros([self._layer_num, self._batch_size, self._hidden_size],
         #              tf.float32)
