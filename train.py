@@ -99,11 +99,12 @@ class PTBModel(object):
         #     validate_shape=False)
         initializer = tf.random_uniform_initializer(-self._config['init_scale'], self._config['init_scale'])
         self._cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=self._layer_num,
-                                             num_units=self._hidden_size,
-                                             dropout=1 - self._config['keep_prob'] if is_training else 0,
-                                             kernel_initializer=initializer,
-                                             bias_initializer=initializer
-                                             )
+                                                   num_units=self._hidden_size,
+                                                   # dropout=1 - self._config['keep_prob'] if is_training else 0,
+                                                   kernel_initializer=initializer,
+                                                   bias_initializer=initializer,
+                                                   is_training=is_training
+                                                   )
         # c = tf.zeros([self._layer_num, self._batch_size, self._hidden_size],
         #              tf.float32)
         # h = tf.zeros([self._layer_num, self._batch_size, self._hidden_size],
@@ -126,7 +127,6 @@ class PTBModel(object):
             is_training = True
         else:
             is_training = False
-
 
         if self._state == 'train' and self._config['keep_prob'] < 1:
             word_inputs = tf.nn.dropout(word_inputs, self._config['keep_prob'])
