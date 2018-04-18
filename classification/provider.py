@@ -15,7 +15,6 @@ class Data_provider(object):
 
     def __init__(self):
         self.data_dir = ''
-
         self.input_compat = input
         self.data_dir = ''
         self.model = ''
@@ -46,7 +45,6 @@ class Data_provider(object):
                 if not filename.endswith("dat.npy"):
                     continue
                 fullname = op.join(self.data_dir, filename)
-                print(fullname)
                 assert op.isfile(fullname) and os.access(fullname, os.R_OK)
                 if fullname.endswith(self.config["dev_corpus_suffix"]):
                     self.dev_corpus_path = fullname
@@ -54,6 +52,7 @@ class Data_provider(object):
                     self.test_corpus_path = fullname
                 else:
                     self.training_corpus_paths.append(fullname)
+            print("provider_file_path_example", self.training_corpus_paths[0])
             self.training_corpus_num = len(self.training_corpus_paths)
         except AssertionError:
             print(traceback.print_exc())
@@ -174,7 +173,7 @@ if __name__ == "__main__":
     '''
     Debug
     '''
-    provide = data_provider()
+    provide = Data_provider()
     provide.status = 'train'
     for x, y, length in provide():
         print("input", x)

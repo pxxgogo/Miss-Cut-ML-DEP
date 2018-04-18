@@ -220,7 +220,7 @@ class Model(object):
 
 
 # @make_spin(Spin1, "Running epoch...")
-def run_epoch(session, model, provider, status, config, verbose=False):
+def run_epoch(session, models, provider, status, config, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
     stage_time = time.time()
@@ -232,18 +232,28 @@ def run_epoch(session, model, provider, status, config, verbose=False):
     batch_size = config["batch_size"]
     sum = 0
     correct_sum = 0
+    saver = tf.train.Saver()
+    saver_No = 0
+    eval_config = config.copy()
+    eval_config['batch_size'] = 1
+    if status == 'train':
+        critical_model = models[0]
+    elif status == 'dev':
+        critical_model = models[1]
+    else:
+        critical_model = models[2]
     for data, batch_words_num in provider():
         data_flag = True
         epoch_size = provider.get_current_epoch_size()
         sub_iters = 0
-        session.run(model.dataset_iterator.initializer, feed_dict={model.data_placeholder: data})
+        session.run(critical_model.dataset_iterator.initializer, feed_dict={critical_model.data_placeholder: data})
         while data_flag:
             # print(sub_iters)
             try:
                 if status == "train":
-                    eval_op = model.train_op
+                    eval_op = critical_model.train_op
                 cost, error_num, _ = session.run(
-                    [model.cost_op, model.error_num_op, eval_op])
+                    [critical_model.cost_op, critical_model.error_num_op, eval_op])
                 # print(cost)
                 costs += cost
                 tmp_precision = (batch_size - error_num) / batch_size
@@ -271,6 +281,22 @@ def run_epoch(session, model, provider, status, config, verbose=False):
                     stage_time = time.time()
             except tf.errors.OutOfRangeError:
                 data_flag = False
+                if status == 'train':
+                    save_path = saver.save(session, os.path.join(config["model_dir"], 'misscut_model'),
+                                           global_step=saver_No)
+                    saver_No += 1
+                    print("Model saved in file: %s" % save_path)
+                    dev_provider = Data_provider()
+                    dev_provider.status = 'dev'
+                    print("Starting Time:", datetime.now())
+                    dev_perplexity, precision = run_epoch(session, models, dev_provider, 'dev',
+                                                          config)
+                    print("Valid Perplexity: %.3f, Precision: %.3f" % (dev_perplexity, precision))
+                    print("Ending Time:", datetime.now())
+    print("Starting Time:", datetime.now())
+    test_perplexity, precision = run_epoch(session, models, provider, 'test', eval_config)
+    print("Test Perplexity: %.3f, Precision: %.3f" % (test_perplexity, precision))
+    print("Ending Time:", datetime.now())
     return np.exp(costs / iters), correct_sum / sum
 
 
@@ -278,13 +304,13 @@ def main():
     provider = Data_provider()
     provider.status = 'train'
     config = provider.get_config()
-    eval_config = config.copy()
-    eval_config['batch_size'] = 1
+
     model_dir = config["model_dir"]
     if not os.path.exists(model_dir):
         os.mkdir(model_dir)
     restored_type = config["restored_type"]
-
+    eval_config = config.copy()
+    eval_config['batch_size'] = 1
     # print (config)
     # print (eval_config)
     session_config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
@@ -303,28 +329,15 @@ def main():
                 config["model_dir"]))
         for v in tf.global_variables():
             print(v.name)
-        saver = tf.train.Saver()
         for i in range(config['max_max_epoch']):
             m.assign_lr(session, config['learning_rate'])
             session.run(m.lr)
             print("Epoch: %d" % i)
             print("Starting Time:", datetime.now())
-            train_perplexity, precision = run_epoch(session, m, provider, 'train', config, verbose=True)
+            train_perplexity, precision = run_epoch(session, (m, mdev, mtest), provider, 'train', config, verbose=True)
             print("Epoch: %d Train Perplexity: %.3f, Precision: %.3f" % (i + 1, train_perplexity, precision))
             print("Ending Time:", datetime.now())
-            save_path = saver.save(session, os.path.join(model_dir, 'misscut_model'), global_step=i)
-            print("Model saved in file: %s" % save_path)
-            print("Starting Time:", datetime.now())
-            dev_perplexity, precision = run_epoch(session, mdev, provider, 'dev', config)
-            print("Epoch: %d Valid Perplexity: %.3f, Precision: %.3f" % (i + 1, dev_perplexity, precision))
-            print("Ending Time:", datetime.now())
-            if (i % 13 == 0 and not i == 0):
-                print("Starting Time:", datetime.now())
-                test_perplexity, precision = run_epoch(session, mtest, provider, 'test', eval_config)
-                print("Test Perplexity: %.3f, Precision: %.3f" % (test_perplexity, precision))
-                print("Ending Time:", datetime.now())
-
-        test_perplexity, precision = run_epoch(session, mtest, provider, 'test', eval_config)
+        test_perplexity, precision = run_epoch(session, (m, mdev, mtest), provider, 'test', eval_config)
         print("Test Perplexity: %.3f, Precision: %.3f" % (test_perplexity, precision))
 
 
