@@ -1,0 +1,53 @@
+{
+  "batch_size": 64,
+  "max_grad_norm": 5,
+  "output_size": 2,
+  "keep_prob": 0.7,
+  "hidden_size": 256,
+  "regularized_lambda": 0.001,
+  "regularized_flag": true,
+  "nn_infos":
+  [
+    {
+      "filter_type": "VALID",
+      "repeated_times": 1,
+      "net_type": "CONV",
+      "filter_size": [
+        3,
+        256
+      ],
+      "out_channels": 32
+    },
+    {
+      "pool_size": [
+        1,
+        10
+      ],
+      "repeated_times": 1,
+      "net_type": "POOL",
+      "pool_type": "VALID",
+    },
+    {
+      "output_size": 256,
+      "keep_prob": 0.5,
+      "repeated_times": 1,
+      "net_type": "DENSE"
+    }
+  ],
+  "gpu_num": 1,
+  "data_dir": "/home/pxxgogo/misscut/data/dependency_ML_corpus/mini",
+  "model_dir": "model_mini",
+  "vocab_name": "corpus.vocab",
+  "learning_rate": 0.0001,
+  "max_epoch": 6,
+  "max_max_epoch": 55,
+  "init_scale": 0.04,
+  "sequence_length": 5,
+  "dev_corpus_suffix": "dev.dat.npy",
+  "test_corpus_suffix": "test.dat.npy",
+  "word_vocab_size": 216080,
+  "label_vocab_size": 48,
+  "restored_type": 0,
+  "negative_data_times": 1
+
+}

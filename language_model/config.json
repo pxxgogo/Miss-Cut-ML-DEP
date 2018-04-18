@@ -18,6 +18,7 @@
   "test_corpus_suffix": "test.dat.npy",
   "word_vocab_size": 216080,
   "label_vocab_size": 48,
-  "restored_type": 0
+  "restored_type": 0,
+  "negative_data_times": 1
 
 }
