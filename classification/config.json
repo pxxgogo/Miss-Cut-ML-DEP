@@ -14,7 +14,7 @@
       "net_type": "CONV",
       "filter_size": [
         3,
-        256
+        30
       ],
       "out_channels": 32
     },
@@ -25,7 +25,7 @@
       ],
       "repeated_times": 1,
       "net_type": "POOL",
-      "pool_type": "VALID",
+      "pool_type": "VALID"
     },
     {
       "output_size": 256,

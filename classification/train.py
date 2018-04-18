@@ -79,7 +79,7 @@ class Model(object):
             self._cost_op, self._error_num_op = self.calculate_cost(data_tensor)
 
     def calculate_cost(self, input_data):
-        print(input_data.shape)
+        sub_batch_size = self._batch_size // self._config["gpu_num"]
         word_embedding = tf.get_variable("word_embedding", [self._word_vocab_size, self._hidden_size],
                                          dtype=data_type())
         label_embedding = tf.get_variable("label_embedding", [self._label_vocab_size, self._hidden_size],
@@ -103,8 +103,8 @@ class Model(object):
                     data = tf.reshape(data, [data.shape[0], data.shape[1], data.shape[2], 1])
                 for i in range(nn_info["repeated_times"]):
                     data = self.add_conv_layer(layer_No, data, nn_info["filter_size"], nn_info["out_channels"],
-                                                  nn_info["filter_type"], self._config["regularized_lambda"],
-                                                  self._config["regularized_flag"])
+                                               nn_info["filter_type"], self._config["regularized_lambda"],
+                                               self._config["regularized_flag"])
                     layer_No += 1
             elif nn_info["net_type"] == "POOL":
                 if len(data.shape) == 3:
@@ -115,22 +115,23 @@ class Model(object):
             elif nn_info["net_type"] == "DENSE":
                 for i in range(nn_info["repeated_times"]):
                     data = self.add_dense_layer(layer_No, data, nn_info["output_size"], nn_info["keep_prob"],
-                                                   self._config["regularized_lambda"], self._config["regularized_flag"])
+                                                self._config["regularized_lambda"], self._config["regularized_flag"])
                     layer_No += 1
 
-            softmax_w = tf.get_variable(
-                "softmax_w", [data.shape[1], 2], dtype=data_type())
-            softmax_b = tf.get_variable("softmax_b", [2], dtype=data_type())
-            logits = tf.matmul(data, softmax_w) + softmax_b
-            rets = tf.argmax(logits, axis=1)
-            tags = tf.argmax(labels, axis=1)
-            error_num = tf.reduce_sum(tf.abs(rets - tags))
-            loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=labels, logits=logits)
-            cost = tf.reduce_mean(loss)
-            return cost, error_num
+        data = tf.reshape(data, [sub_batch_size, -1])
+        softmax_w = tf.get_variable(
+            "softmax_w", [data.shape[1], 2], dtype=data_type())
+        softmax_b = tf.get_variable("softmax_b", [2], dtype=data_type())
+        logits = tf.matmul(data, softmax_w) + softmax_b
+        rets = tf.argmax(logits, axis=1)
+        tags = tf.argmax(labels, axis=1)
+        error_num = tf.reduce_sum(tf.abs(rets - tags))
+        loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=labels, logits=logits)
+        cost = tf.reduce_mean(loss)
+        return cost, error_num
 
-    def add_conv_layer(self, No, input, filter_size, out_channels, filter_type, regularized_lambda,
-                       strides=[1, 1, 1, 1], r_flag=True):
+    def add_conv_layer(self, No, input, filter_size, out_channels, filter_type, regularized_lambda, r_flag=True,
+                       strides=[1, 1, 1, 1]):
         with tf.variable_scope("conv_layer_%d" % No):
             W = tf.get_variable('filter', [filter_size[0], filter_size[1], input.shape[3], out_channels])
             if r_flag:
@@ -217,6 +218,7 @@ class Model(object):
     def data_placeholder(self):
         return self._data_placeholder
 
+
 # @make_spin(Spin1, "Running epoch...")
 def run_epoch(session, model, provider, status, config, verbose=False):
     """Runs the model on the given data."""
@@ -271,6 +273,7 @@ def run_epoch(session, model, provider, status, config, verbose=False):
                 data_flag = False
     return np.exp(costs / iters), correct_sum / sum
 
+
 def main():
     provider = Data_provider()
     provider.status = 'train'
@@ -323,6 +326,7 @@ def main():
 
         test_perplexity, precision = run_epoch(session, mtest, provider, 'test', eval_config)
         print("Test Perplexity: %.3f, Precision: %.3f" % (test_perplexity, precision))
+
 
 if __name__ == "__main__":
     main()
