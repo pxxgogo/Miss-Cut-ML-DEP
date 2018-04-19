@@ -293,10 +293,11 @@ def run_epoch(session, models, provider, status, config, verbose=False):
                                                           config)
                     print("Valid Perplexity: %.3f, Precision: %.3f" % (dev_perplexity, precision))
                     print("Ending Time:", datetime.now())
-    print("Starting Time:", datetime.now())
-    test_perplexity, precision = run_epoch(session, models, provider, 'test', eval_config)
-    print("Test Perplexity: %.3f, Precision: %.3f" % (test_perplexity, precision))
-    print("Ending Time:", datetime.now())
+    if status == "train":
+        print("Starting Time:", datetime.now())
+        test_perplexity, precision = run_epoch(session, models, provider, 'test', eval_config)
+        print("Test Perplexity: %.3f, Precision: %.3f" % (test_perplexity, precision))
+        print("Ending Time:", datetime.now())
     return np.exp(costs / iters), correct_sum / sum
 
 

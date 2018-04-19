@@ -118,12 +118,15 @@ class Data_provider(object):
                     data_index = random.randint(0, self.label_vocab_size - 1)
                 new_data[index] = data_index
                 negative_data.append(new_data)
-        negative_data_np = np.append(negative_data, negative_tags, axis=1)
-        positive_data_np = np.append(raw_corpus, positive_tags, axis=1)
-        negative_tags = []
-        negative_data = []
-        positive_tags = []
-        data_np = np.append(positive_data_np, negative_data_np, axis=0)
+        if negative_data_times == 0:
+            data_np = np.append(raw_corpus, positive_tags, axis=1)
+        else:
+            negative_data_np = np.append(negative_data, negative_tags, axis=1)
+            positive_data_np = np.append(raw_corpus, positive_tags, axis=1)
+            negative_tags = []
+            negative_data = []
+            positive_tags = []
+            data_np = np.append(positive_data_np, negative_data_np, axis=0)
         np.random.shuffle(data_np)
         print(data_np[0], data_np.shape)
         return data_np
