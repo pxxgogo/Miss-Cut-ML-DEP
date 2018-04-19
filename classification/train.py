@@ -281,7 +281,7 @@ def run_epoch(session, models, provider, status, config, verbose=False):
                     stage_time = time.time()
             except tf.errors.OutOfRangeError:
                 data_flag = False
-                if status == 'train':
+            if not data_flag and status == 'train':
                     save_path = saver.save(session, os.path.join(config["model_dir"], 'misscut_model'),
                                            global_step=saver_No)
                     saver_No += 1
