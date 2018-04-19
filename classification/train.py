@@ -7,6 +7,7 @@ from datetime import datetime
 
 import numpy as np
 import tensorflow as tf
+import json
 
 from .provider import Data_provider
 
@@ -79,6 +80,7 @@ class Model(object):
             self._cost_op, self._error_num_op = self.calculate_cost(data_tensor)
 
     def calculate_cost(self, input_data):
+        print(input_data.shape)
         sub_batch_size = self._batch_size // self._config["gpu_num"]
         word_embedding = tf.get_variable("word_embedding", [self._word_vocab_size, self._hidden_size],
                                          dtype=data_type())
@@ -286,7 +288,7 @@ def run_epoch(session, models, provider, status, config, verbose=False):
                                            global_step=saver_No)
                     saver_No += 1
                     print("Model saved in file: %s" % save_path)
-                    dev_provider = Data_provider()
+                    dev_provider = Data_provider(config)
                     dev_provider.status = 'dev'
                     print("Starting Time:", datetime.now())
                     dev_perplexity, precision = run_epoch(session, models, dev_provider, 'dev',
@@ -300,9 +302,11 @@ def run_epoch(session, models, provider, status, config, verbose=False):
         print("Ending Time:", datetime.now())
     return np.exp(costs / iters), correct_sum / sum
 
+CONFIG_FILE_NAME = "./classification/config.json"
 
 def main():
-    provider = Data_provider()
+    init_config = json.load(open(CONFIG_FILE_NAME))
+    provider = Data_provider(init_config)
     provider.status = 'train'
     config = provider.get_config()
 
