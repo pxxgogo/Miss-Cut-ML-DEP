@@ -12,9 +12,9 @@ import tensorflow as tf
 CONFIG_FILE_NAME = "config.json"
 
 
-class ptb_data_provider(object):
+class Data_provider(object):
 
-    def __init__(self):
+    def __init__(self, config):
         self.data_dir = ''
 
         self.input_compat = input
@@ -29,12 +29,11 @@ class ptb_data_provider(object):
         self.test_corpus_path = ""
         self.dev_corpus_path = ""
         self.current_epoch_size = -1
-        self._parse_config()
+        self._parse_config(config)
 
-    def _parse_config(self):
+    def _parse_config(self, config):
         try:
-            assert op.isfile(CONFIG_FILE_NAME) and os.access(CONFIG_FILE_NAME, os.R_OK)
-            self.config = json.load(open(CONFIG_FILE_NAME, 'r'))
+            self.config = config
             assert 'data_dir' in self.config
             self.data_dir = self.config['data_dir']
             assert op.isdir(self.data_dir) and os.access(self.data_dir, os.R_OK)
@@ -144,7 +143,7 @@ if __name__ == "__main__":
     '''
     Debug
     '''
-    provide = ptb_data_provider()
+    provide = Data_provider()
     provide.status = 'train'
     for x, y, length in provide():
         print("input", x)

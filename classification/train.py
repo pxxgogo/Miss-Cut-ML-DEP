@@ -284,17 +284,17 @@ def run_epoch(session, models, provider, status, config, verbose=False):
             except tf.errors.OutOfRangeError:
                 data_flag = False
             if not data_flag and status == 'train':
-                    save_path = saver.save(session, os.path.join(config["model_dir"], 'misscut_model'),
-                                           global_step=saver_No)
-                    saver_No += 1
-                    print("Model saved in file: %s" % save_path)
-                    dev_provider = Data_provider(config)
-                    dev_provider.status = 'dev'
-                    print("Starting Time:", datetime.now())
-                    dev_perplexity, precision = run_epoch(session, models, dev_provider, 'dev',
-                                                          config)
-                    print("Valid Perplexity: %.3f, Precision: %.3f" % (dev_perplexity, precision))
-                    print("Ending Time:", datetime.now())
+                save_path = saver.save(session, os.path.join(config["model_dir"], 'misscut_model'),
+                                       global_step=saver_No)
+                saver_No += 1
+                print("Model saved in file: %s" % save_path)
+                dev_provider = Data_provider(config)
+                dev_provider.status = 'dev'
+                print("Starting Time:", datetime.now())
+                dev_perplexity, precision = run_epoch(session, models, dev_provider, 'dev',
+                                                      config)
+                print("Valid Perplexity: %.3f, Precision: %.3f" % (dev_perplexity, precision))
+                print("Ending Time:", datetime.now())
     if status == "train":
         print("Starting Time:", datetime.now())
         test_perplexity, precision = run_epoch(session, models, provider, 'test', eval_config)
