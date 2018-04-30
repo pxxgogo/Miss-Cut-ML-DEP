@@ -11,6 +11,7 @@ import tensorflow as tf
 from .provider import Data_provider
 import json
 
+
 flags = tf.flags
 logging = tf.logging
 
@@ -44,40 +45,18 @@ def make_parallel(fn, num_gpus, **kwargs):
 class Model(object):
     """The PTB model."""
 
-    def __init__(self, config, state):
+    def __init__(self, config):
         self._batch_size = config['batch_size']
         self._hidden_size = config['hidden_size']
         self._word_vocab_size = config['word_vocab_size']
         self._label_vocab_size = config['label_vocab_size']
         self._config = config
-        self._state = state
         self._data_placeholder = tf.placeholder(tf.int32, [None, self._config["sequence_length"]])
-        if state == 'train':
-            self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
-            self._dataset = self._dataset.shuffle(buffer_size=100000).apply(
-                tf.contrib.data.batch_and_drop_remainder(self._batch_size))
-            self._dataset_iterator = self._dataset.make_initializable_iterator()
-            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"],
-                                          input_data=self._dataset_iterator.get_next())
-            # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
-            # with tf.device("/cpu:0"):
-            self.update_model(self._cost_op)
-
-        elif state == 'dev':
-            self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
-            self._dataset = self._dataset.shuffle(buffer_size=100000).apply(
-                tf.contrib.data.batch_and_drop_remainder(self._batch_size))
-            self._dataset_iterator = self._dataset.make_initializable_iterator()
-            # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
-            self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"],
-                                          input_data=self._dataset_iterator.get_next())
-
-        else:
-            self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
-            self._dataset = self._dataset.shuffle(buffer_size=100000)
-            self._dataset_iterator = self._dataset.make_initializable_iterator()
-            data_tensor = tf.reshape(self._dataset_iterator.get_next(), [1, -1])
-            self._cost_op = self.calculate_cost(data_tensor)
+        self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
+        self._dataset = self._dataset.shuffle(buffer_size=100000)
+        self._dataset_iterator = self._dataset.make_initializable_iterator()
+        data_tensor = tf.reshape(self._dataset_iterator.get_next(), [1, -1])
+        self._cost_op = self.calculate_cost(data_tensor)
 
     def calculate_cost(self, input_data):
 
@@ -251,7 +230,7 @@ def run_epoch(session, models, provider, status, config, verbose=False):
                 dev_provider = Data_provider(config)
                 print("Starting Time:", datetime.now())
                 dev_perplexity = run_epoch(session, models, dev_provider, 'dev',
-                                           config)
+                                                      config)
                 print("Valid Perplexity: %.3f" % dev_perplexity)
                 print("Ending Time:", datetime.now())
         if status == "train":
@@ -262,37 +241,24 @@ def run_epoch(session, models, provider, status, config, verbose=False):
     return np.exp(costs / iters)
 
 
-CONFIG_FILE_NAME = "./language_model/config.json"
-
+CONFIG_FILE_NAME = "./language_model_test/config.json"
 
 def main():
     init_config = json.load(open(CONFIG_FILE_NAME))
     provider = Data_provider(init_config)
-    provider.status = 'train'
+    provider.status = 'test'
     config = provider.get_config()
-    eval_config = config.copy()
-    eval_config['batch_size'] = 1
-    model_dir = config["model_dir"]
-    if not os.path.exists(model_dir):
-        os.mkdir(model_dir)
-    restored_type = config["restored_type"]
 
-    # print (config)
-    # print (eval_config)
     session_config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     with tf.Graph().as_default(), tf.Session(config=session_config) as session:
         initializer = tf.random_uniform_initializer(-config['init_scale'], config['init_scale'])
         with tf.variable_scope("model", reuse=None, initializer=initializer):
-            m = Model(config=config, state='train')
-        with tf.variable_scope("model", reuse=True, initializer=initializer):
-            mdev = Model(config=config, state='dev')
-            mtest = Model(config=eval_config, state='test')
-
+            m = Model(config=config)
         session.run(tf.global_variables_initializer())
-        if restored_type == 1:
-            new_saver = tf.train.Saver()
-            new_saver.restore(session, tf.train.latest_checkpoint(
-                config["model_dir"]))
+        new_saver = tf.train.Saver()
+        new_saver.restore(session, tf.train.latest_checkpoint(
+            config["model_dir"]))
+
         for v in tf.global_variables():
             print(v.name)
         for i in range(config['max_max_epoch']):
@@ -300,12 +266,9 @@ def main():
             session.run(m.lr)
             print("Epoch: %d" % i)
             print("Starting Time:", datetime.now())
-            train_perplexity = run_epoch(session, (m, mdev, mtest), provider, 'train', config, verbose=True)
+            train_perplexity = run_epoch(session, m, provider, 'train', config, verbose=True)
             print("Epoch: %d Train Perplexity: %.3f" % (i + 1, train_perplexity))
             print("Ending Time:", datetime.now())
-        test_perplexity = run_epoch(session, (m, mdev, mtest), provider, 'test', eval_config)
-        print("Test Perplexity: %.3f" % test_perplexity)
-
 
 if __name__ == "__main__":
     main()
