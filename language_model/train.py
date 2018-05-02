@@ -60,8 +60,8 @@ class Model(object):
             self._cost_op = make_parallel(self.calculate_cost, config["gpu_num"],
                                           input_data=self._dataset_iterator.get_next())
             # self._cost_op = self.calculate_cost(self._dataset_iterator.get_next())
-            # with tf.device("/cpu:0"):
-            self.update_model(self._cost_op)
+            with tf.device("/cpu:0"):
+                self.update_model(self._cost_op)
 
         elif state == 'dev':
             self._dataset = tf.data.Dataset.from_tensor_slices(self._data_placeholder)
